@@ -1,0 +1,62 @@
+group 'AWSESSampleApp'
+version '1.0.0'
+
+apply plugin: 'java'
+apply plugin: 'java-library'
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+task jestClientJar(type: Jar, dependsOn: jar) {
+    manifest { attributes 'Main-Class': 'com.amazonaws.jestexample.JestClientTest' }
+    baseName = 'aws-elasticsearch-jest-client-test'
+    exclude 'com/amazonaws/restexample/*'
+    exclude 'com/amazonaws/javaexample/*'
+    from { configurations.runtime.collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
+task javaClientJar(type: Jar, dependsOn: jar) {
+    manifest { attributes 'Main-Class': 'com.amazonaws.javaexample.JavaClientTest' }
+    baseName = 'aws-elasticsearch-java-client-test'
+    exclude 'com/amazonaws/restexample/*'
+    exclude 'com/amazonaws/jestexample/*'
+    from { configurations.runtime.collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+
+    // https://mvnrepository.com/artifact/io.searchbox/jest
+    compile group: 'io.searchbox', name: 'jest', version: '5.3.2'
+
+    // https://mvnrepository.com/artifact/org.elasticsearch/elasticsearch
+    compile group: 'org.elasticsearch', name: 'elasticsearch', version: '5.1.1'
+
+    // https://mvnrepository.com/artifact/org.elasticsearch.client/rest
+    compile group: 'org.elasticsearch.client', name: 'rest', version: '5.1.1'
+
+    // https://mvnrepository.com/artifact/com.amazonaws/aws-java-sdk
+    compile group: 'com.amazonaws', name: 'aws-java-sdk', version: '1.11.163'
+
+    // https://mvnrepository.com/artifact/vc.inreach.aws/aws-signing-request-interceptor
+    compile group: 'vc.inreach.aws', name: 'aws-signing-request-interceptor', version: '0.0.16'
+
+    // https://mvnrepository.com/artifact/org.apache.logging.log4j/log4j-core
+    compile group: 'org.apache.logging.log4j', name: 'log4j-core', version: '2.8.2'
+
+    // https://mvnrepository.com/artifact/org.apache.logging.log4j/log4j-api
+    compile group: 'org.apache.logging.log4j', name: 'log4j-api', version: '2.8.2'
+
+    // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
+    compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.25'
+
+    // https://mvnrepository.com/artifact/org.slf4j/slf4j-simple
+    compile group: 'org.slf4j', name: 'slf4j-simple', version: '1.7.25'
+}
