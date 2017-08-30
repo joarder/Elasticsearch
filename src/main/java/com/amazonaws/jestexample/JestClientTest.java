@@ -2,9 +2,10 @@ package com.amazonaws.jestexample;
 
 import com.amazonaws.AmazonClientException;
 import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
 import com.amazonaws.auth.profile.ProfileCredentialsProvider;
 import com.google.common.base.Supplier;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import io.searchbox.client.JestClient;
 import io.searchbox.client.JestClientFactory;
 import io.searchbox.client.JestResult;
@@ -15,11 +16,14 @@ import io.searchbox.core.Index;
 import io.searchbox.core.Search;
 import io.searchbox.indices.CreateIndex;
 import io.searchbox.indices.DeleteIndex;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.index.query.QueryBuilders;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import vc.inreach.aws.request.AWSSigner;
 import vc.inreach.aws.request.AWSSigningRequestInterceptor;
 import java.time.LocalDateTime;
@@ -31,9 +35,11 @@ import java.util.List;
  */
 public class JestClientTest {
 
+    private static final Logger log = LoggerFactory.getLogger(JestClientTest.class);
+
     private static final String SERVICE = "es";
     private static final String REGION = "eu-west-1";
-    private static final String HOST = "search-es-51-gt25azdfbksmzdlr2ffruwiudy.eu-west-1.es.amazonaws.com";
+    private static final String HOST = "search-es-53-xmezy6qrkktwo3axfqo2z3v7ee.eu-west-1.es.amazonaws.com";
     private static final String ENDPOINT_ROOT = "https://" + HOST;
     private static final String PATH = "/";
     private static final String ENDPOINT = ENDPOINT_ROOT + PATH;
@@ -42,6 +48,7 @@ public class JestClientTest {
     private static final String DIARY_INDEX_NAME = "diary";
 
     private static AWSCredentialsProvider credentialsProvider;
+    private static ObjectMapper mapper = new ObjectMapper();
 
     // Initialization
     private static void init() {
@@ -53,8 +60,8 @@ public class JestClientTest {
          * credential profile by reading from the credentials file located at
          * (~/.aws/credentials).
          */
-        //credentialsProvider = new ProfileCredentialsProvider("awses");
-        credentialsProvider = new DefaultAWSCredentialsProviderChain();
+        credentialsProvider = new ProfileCredentialsProvider("es-admin");
+        //credentialsProvider = new DefaultAWSCredentialsProviderChain("");
 
         try {
             credentialsProvider.getCredentials();
@@ -68,14 +75,17 @@ public class JestClientTest {
 
     // Create an index
     private static void createIndex(final JestClient jestClient) throws Exception {
-        System.out.println(">> Creating index \""+DIARY_INDEX_NAME+"\" ...");
+        log.info("Creating index \""+DIARY_INDEX_NAME+"\" ...");
 
         Settings.Builder settings = Settings.builder();
         settings.put("number_of_shards", 3);
         settings.put("number_of_replicas", 1);
 
-        jestClient.execute(new CreateIndex.Builder(DIARY_INDEX_NAME)
+        JestResult result = jestClient.execute(new CreateIndex.Builder(DIARY_INDEX_NAME)
                 .settings(settings.build().getAsMap()).build());
+
+        if(!isValidResult(result))
+            System.exit(result.getResponseCode());
     }
 
     // Index some documents into Elasticsearch
@@ -85,15 +95,18 @@ public class JestClientTest {
                 + System.currentTimeMillis());
         Index index = new Index.Builder(note1).index(DIARY_INDEX_NAME).type(NOTES_TYPE_NAME).build();
 
-        System.out.println(">> Inserting a single document ...\n" + note1);
-        jestClient.execute(index);
+        log.info("Inserting a single document ...\n" + note1);
+        JestResult result = jestClient.execute(index);
+
+        if(!isValidResult(result))
+            System.exit(result.getResponseCode());
 
         // Asynch index
         final Note note2 = new Note("User2", "Note2: do u see this - "
                 + System.currentTimeMillis());
         index = new Index.Builder(note2).index(DIARY_INDEX_NAME).type(NOTES_TYPE_NAME).build();
 
-        System.out.println(">> Inserting a single document asynchronously ...\n" + note2);
+        log.info("Inserting a single document asynchronously ...\n" + note2);
         jestClient.executeAsync(index, new JestResultHandler<JestResult>() {
             public void failed(Exception ex) { }
 
@@ -114,12 +127,13 @@ public class JestClientTest {
                 .addAction(new Index.Builder(note4).index(DIARY_INDEX_NAME)
                                 .type(NOTES_TYPE_NAME).build()).build();
 
-        System.out.println(">> Inserting two documents using bulk API ...\n" + note3 +"\n"+ note4);
-        JestResult result = jestClient.execute(bulk);
+        log.info("Inserting two documents using bulk API ...\n" + note3 +"\n"+ note4);
 
+        result = jestClient.execute(bulk);
         Thread.sleep(2000);
 
-        System.out.println(result.toString());
+        if(!isValidResult(result))
+            System.exit(result.getResponseCode());
     }
 
     // Query or Search within an index
@@ -130,22 +144,49 @@ public class JestClientTest {
         Search search = new Search.Builder(searchSourceBuilder.toString())
                 .addIndex(DIARY_INDEX_NAME).addType(NOTES_TYPE_NAME).build();
 
-        System.out.println(">> Querying index \""+DIARY_INDEX_NAME+"\" for 'note' and 'see' ...");
-        System.out.println(searchSourceBuilder.toString());
+        log.info("Querying index \""+DIARY_INDEX_NAME+"\" for 'note' and 'see' ...");
+        log.info(searchSourceBuilder.toString());
 
         JestResult result = jestClient.execute(search);
-        List<Note> notes = result.getSourceAsObjectList(Note.class);
 
-        for (Note note : notes)
-            System.out.println(note);
+        if(!isValidResult(result))
+            System.exit(result.getResponseCode());
+        else {
+            List<Note> notes = result.getSourceAsObjectList(Note.class);
+            for (Note note : notes)
+                System.out.println(note);
+        }
     }
 
     // Delete an index
     private static void deleteIndex(final JestClient jestClient) throws Exception {
-        System.out.println(">> Deleting index \""+DIARY_INDEX_NAME+"\" ...");
+        log.info("Deleting index \""+DIARY_INDEX_NAME+"\" ...");
 
         DeleteIndex deleteIndex = new DeleteIndex.Builder(DIARY_INDEX_NAME).build();
-        jestClient.execute(deleteIndex);
+        JestResult result = jestClient.execute(deleteIndex);
+
+        if(!isValidResult(result))
+            System.exit(result.getResponseCode());
+    }
+
+    //
+    public static boolean isValidResult(JestResult result) throws Exception {
+        log.info("Response from Elasticsearch ...");
+
+        Gson gson;
+
+        if(!result.isSucceeded()) {
+            gson = new GsonBuilder().setPrettyPrinting().create();
+            log.info(gson.toJson(result.getErrorMessage()));
+
+            return false;
+
+        } else {
+            gson = new GsonBuilder().setPrettyPrinting().create();
+            log.info(gson.toJson(result.getJsonObject()));
+
+            return true;
+        }
     }
 
     // Main function - entry point
@@ -185,7 +226,6 @@ public class JestClientTest {
                 indexData(jestClient);
                 queryIndex(jestClient);
                 deleteIndex(jestClient);
-
             } finally {
                 // Shutdown client
                 jestClient.shutdownClient();
